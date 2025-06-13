@@ -1,5 +1,6 @@
 
 import 'dart:async';
+import 'package:almost_zenly/screens/map_screen/components/profile_button.dart';
 import 'package:almost_zenly/screens/map_screen/components/sign_in_button.dart';
 import 'package:almost_zenly/screens/map_screen/components/sign_out_button.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -85,10 +86,6 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        title: const Text('Map'),
-      ),
       body: GoogleMap(
         initialCameraPosition: initialCameraPosition,
         onMapCreated: (GoogleMapController controller) async {
@@ -100,13 +97,11 @@ class _MapScreenState extends State<MapScreen> {
         myLocationButtonEnabled: false,
         markers: markers,
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: !isSignedIn
-          ? const SignInButton()
-          : SignOutButton(
-              isLoading: isLoading,
-              onPressed: () => _signOut(),
-            ),
+      floatingActionButtonLocation: !isSignedIn
+          ? FloatingActionButtonLocation.centerFloat
+          : FloatingActionButtonLocation.endTop,
+      floatingActionButton:
+          !isSignedIn ? const SignInButton() : const ProfileButton(),
     );
   }
 

@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'package:almost_zenly/screens/map_screen/components/profile_button.dart';
 import 'package:almost_zenly/screens/map_screen/components/sign_in_button.dart';
-import 'package:almost_zenly/screens/map_screen/components/sign_out_button.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';

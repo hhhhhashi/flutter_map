@@ -1,5 +1,6 @@
 // importは省略しています
 import 'package:almost_zenly/types/image_type.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AppUser {
   AppUser({
@@ -7,17 +8,20 @@ class AppUser {
     this.name = '',
     this.profile = '',
     this.imageType = ImageType.lion,
+    this.location,
   });
 
   final String? id;
   final String name;
   final String profile;
   final ImageType imageType;
+  final GeoPoint? location;
 
-  factory AppUser.fromDoc(String id, Map<String, dynamic> doc) => AppUser(
+  factory AppUser.fromDoc(String id, Map<String, dynamic> json) => AppUser(
         id: id,
-        name: doc['name'],
-        profile: doc['profile'],
-        imageType: ImageType.fromString(doc['image_type']),
+        imageType: ImageType.fromString(json['image_type']),
+        name: json['name'],
+        profile: json['profile'],
+        location: json['location'],
       );
 }

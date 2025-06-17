@@ -167,7 +167,7 @@ class _MapScreenState extends State<MapScreen> {
    }
  }
 
-
+  //変数initialCameraPositionに緯度と経度・拡大率を渡したカメラの初期値情報を格納する。
   final CameraPosition initialCameraPosition = const CameraPosition(
     target: LatLng(35.681236, 139.767125), // 東京駅
     zoom: 16.0,
@@ -199,6 +199,7 @@ class _MapScreenState extends State<MapScreen> {
       alignment: Alignment.bottomCenter,
       children: [
       GoogleMap(
+        //カメラの初期位置を渡してGoogleMapを表示する。
         initialCameraPosition: initialCameraPosition,
         onMapCreated: (GoogleMapController controller) async {
           mapController = controller;
@@ -304,23 +305,28 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
+  // 位置情報の許可されていない時に許可をリクエストする。
   Future<void> _requestPermission() async {
-    // 位置情報の許可を求める
+    // 現在位置の取得許可状況を確認する
     LocationPermission permission = await Geolocator.checkPermission();
+    //そのステータスが許可されていない場合、
     if (permission == LocationPermission.denied) {
+      //ユーザに位置情報の使用許可を求める
       await Geolocator.requestPermission();
     }
   }
 
   Future<void> _moveToCurrentLocation() async {
+    // 現在位置の取得許可状況を確認する
     LocationPermission permission = await Geolocator.checkPermission();
+    //位置情報の許可されている場合（常に許可されている・許可されている場合）
     if (permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse) {
-      // 現在地を取得
+      // 精度を高く現在地の緯度と経度を取得して変数Positionに格納する
       final Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-
+      
       setState(() {
         markers.add(
           Marker(

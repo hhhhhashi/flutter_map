@@ -25,9 +25,186 @@ class _MapScreenState extends State<MapScreen> {
   // ------------  Users  ------------
   late StreamSubscription<List<AppUser>> usersStream;
   late Position currentUserPosition;
-
+  bool isSignedIn = false;
+  bool isLoading = false;
 
   Set<Marker> markers = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+    body: Stack(
+      alignment: Alignment.bottomCenter,
+      children: [
+      GoogleMap(
+        //カメラの初期位置を渡してGoogleMapを表示する。
+        initialCameraPosition: initialCameraPosition,
+        //マップが作成された時に最初に呼ばれる処理
+        onMapCreated: (GoogleMapController controller) async {
+          mapController = controller;
+          await _requestPermission();
+          await _moveToCurrentLocation();
+          _watchCurrentLocation();
+        },
+        //現在地に移動するボタンを設定
+        myLocationButtonEnabled: false,
+        //現在地のピンマーカーを取得するのか設定
+        markers: markers,
+      ),
+      StreamBuilder(
+           stream: getAppUsersStream(),
+           builder: (BuildContext context, snapshot) {
+             if (snapshot.hasData && isSignedIn) {
+               // 自分以外のユーザーかつlocationデータを持つユーザー配列を取得
+               final users = snapshot.data!
+                   .where((user) => user.id != currentUserId)
+                   .where((user) => user.location != null)
+                   .toList();
+
+               return UserCardList(
+                 onPageChanged: (index) {
+                  late GeoPoint location;
+                    if (index == 0) {
+                      location = GeoPoint(
+                        currentUserPosition.latitude,
+                        currentUserPosition.longitude,
+                      );
+                    } else {
+                      //スワイプ後のユーザーの位置情報を取得
+                      location = users.elementAt(index - 1).location!;
+                    }
+                   
+                   //スワイプ後のユーザーの座標までカメラを移動
+                   mapController.animateCamera(
+                     CameraUpdate.newCameraPosition(
+                       CameraPosition(
+                         target: LatLng(
+                           location.latitude,
+                           location.longitude,
+                         ),
+                         zoom: 16.0,
+                       ),
+                     ),
+                   );
+                 },
+                 appUsers: users,
+               );
+             }
+             // サインアウト時、ユーザーデータを未取得時に表示するwidget
+             return Container();
+           },
+         ),
+      ],
+    ),
+      floatingActionButtonLocation: !isSignedIn
+          ? FloatingActionButtonLocation.centerFloat
+          : FloatingActionButtonLocation.endTop,
+      floatingActionButton:
+          !isSignedIn ? const SignInButton() : const ProfileButton(),
+    );
+  }
+
+  //位置情報を取得してカメラ位置を移動させる
+  Future<void> _moveToCurrentLocation() async {
+    // 現在位置の取得許可状況を確認する
+    LocationPermission permission = await Geolocator.checkPermission();
+    //位置情報の許可されている場合（常に許可されている・許可されている場合）
+    if (permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse) {
+      // 精度を高く現在地の緯度と経度を取得して変数Positionに格納する
+      final Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      //markerにセットするためにメソッドを処理する。
+      setState(() {
+        markers.add(
+          Marker(
+            markerId: const MarkerId("current_location"),
+            position: LatLng(
+              position.latitude,
+              position.longitude,
+            ),
+          ),
+        );
+      });
+
+      // 現在地にカメラを移動
+      //非同期処理でカメラを移動させる処理に引数としてCameraUpdateを渡す
+      await mapController.animateCamera(
+        CameraUpdate.newCameraPosition(
+          //カメラ位置を下記で経度・緯度を設定する。
+          CameraPosition(
+            target: LatLng(position.latitude, position.longitude),
+            zoom: 16.0,
+          ),
+        ),
+      );
+    }
+  }
+
+  // 位置情報の許可されていない時に許可をリクエストする。
+  Future<void> _requestPermission() async {
+    // 現在位置の取得許可状況を確認する
+    LocationPermission permission = await Geolocator.checkPermission();
+    //そのステータスが許可されていない場合、
+    if (permission == LocationPermission.denied) {
+      //ユーザに位置情報の使用許可を求める
+      await Geolocator.requestPermission();
+    }
+  }
+
+  //現在の位置情報を受け取りリアルタイムでマーカーの位置を変更する
+  void _watchCurrentLocation() {
+    // 現在地をリアルタイムで監視する
+    positionStream =
+    //位置が更新されるたびにpostionを受け取る
+    Geolocator.getPositionStream(locationSettings: locationSettings).listen((position) async {
+
+      // マーカーの位置を更新
+      setState(() {
+        currentUserPosition = position;
+
+        //すでにある「現在地の位置マーカー」を削除する
+        markers.removeWhere(
+            (marker) => marker.markerId == const MarkerId('current_location'));
+
+        //新しい位置にマーカーを追加する
+        markers.add(Marker(
+          markerId: const MarkerId('current_location'),
+          position: LatLng(
+            position.latitude,
+            position.longitude,
+          ),
+        ));
+
+      });
+
+      // 現在地にカメラを移動
+      await mapController.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(position.latitude, position.longitude),
+            zoom: await mapController.getZoomLevel(),
+          ),
+        ),
+      );
+
+     // Firestoreに現在地をアップロード（自作関数を使ってCloud Firestore に現在の位置情報をアップロード）
+     await _updateUserLocationInFirestore(position);
+
+    });
+  }
+
+  // 現在地通知の設定
+  final LocationSettings locationSettings = const LocationSettings(
+    accuracy: LocationAccuracy.high, //正確性:highはAndroid(0-100m),iOS(10m)
+    distanceFilter: 20,
+  );
+
+
+
+
 
    // ------------  Methods for Markers  ------------
   void _watchUsers() {
@@ -37,9 +214,6 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   // ------------  State changes  ------------
-  bool isSignedIn = false;
-  bool isLoading = false;
-
   void setIsSignedIn(bool value) {
       setState(() {
           isSignedIn = value;
@@ -173,17 +347,10 @@ class _MapScreenState extends State<MapScreen> {
     zoom: 16.0,
   );
 
-
-  // 現在地通知の設定
-  final LocationSettings locationSettings = const LocationSettings(
-    accuracy: LocationAccuracy.high, //正確性:highはAndroid(0-100m),iOS(10m)
-    distanceFilter: 20,
-  );
-
-
   @override
   void dispose() {
     mapController.dispose();
+    //サブスクリプションを解放する
     positionStream.cancel();
     // ログイン状態の監視を解放
     authUserStream.cancel();
@@ -192,76 +359,7 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-    body: Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-      GoogleMap(
-        //カメラの初期位置を渡してGoogleMapを表示する。
-        initialCameraPosition: initialCameraPosition,
-        onMapCreated: (GoogleMapController controller) async {
-          mapController = controller;
-          await _requestPermission();
-          await _moveToCurrentLocation();
-          _watchCurrentLocation();
-        },
-        myLocationButtonEnabled: false,
-        markers: markers,
-      ),
-      StreamBuilder(
-           stream: getAppUsersStream(),
-           builder: (BuildContext context, snapshot) {
-             if (snapshot.hasData && isSignedIn) {
-               // 自分以外のユーザーかつlocationデータを持つユーザー配列を取得
-               final users = snapshot.data!
-                   .where((user) => user.id != currentUserId)
-                   .where((user) => user.location != null)
-                   .toList();
-
-               return UserCardList(
-                 onPageChanged: (index) {
-                  late GeoPoint location;
-                    if (index == 0) {
-                      location = GeoPoint(
-                        currentUserPosition.latitude,
-                        currentUserPosition.longitude,
-                      );
-                    } else {
-                      //スワイプ後のユーザーの位置情報を取得
-                      location = users.elementAt(index - 1).location!;
-                    }
-                   
-                   //スワイプ後のユーザーの座標までカメラを移動
-                   mapController.animateCamera(
-                     CameraUpdate.newCameraPosition(
-                       CameraPosition(
-                         target: LatLng(
-                           location.latitude,
-                           location.longitude,
-                         ),
-                         zoom: 16.0,
-                       ),
-                     ),
-                   );
-                 },
-                 appUsers: users,
-               );
-             }
-             // サインアウト時、ユーザーデータを未取得時に表示するwidget
-             return Container();
-           },
-         ),
-      ],
-    ),
-      floatingActionButtonLocation: !isSignedIn
-          ? FloatingActionButtonLocation.centerFloat
-          : FloatingActionButtonLocation.endTop,
-      floatingActionButton:
-          !isSignedIn ? const SignInButton() : const ProfileButton(),
-    );
-  }
+  
 
   Future<void> _signOut() async {
     _setIsLoading(true);
@@ -270,86 +368,11 @@ class _MapScreenState extends State<MapScreen> {
     _setIsLoading(false);
   }
 
-  void _watchCurrentLocation() {
-    // 現在地を監視
-    positionStream =
-        Geolocator.getPositionStream(locationSettings: locationSettings)
-            .listen((position) async {
-      // マーカーの位置を更新
-      setState(() {
-        currentUserPosition = position;
-        markers.removeWhere(
-            (marker) => marker.markerId == const MarkerId('current_location'));
+  
 
-        markers.add(Marker(
-          markerId: const MarkerId('current_location'),
-          position: LatLng(
-            position.latitude,
-            position.longitude,
-          ),
-        ));
-      });
+  
 
-      // Firestoreに現在地を更新
-     await _updateUserLocationInFirestore(position);
-
-      // 現在地にカメラを移動
-      await mapController.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(position.latitude, position.longitude),
-            zoom: await mapController.getZoomLevel(),
-          ),
-        ),
-      );
-    });
-  }
-
-  // 位置情報の許可されていない時に許可をリクエストする。
-  Future<void> _requestPermission() async {
-    // 現在位置の取得許可状況を確認する
-    LocationPermission permission = await Geolocator.checkPermission();
-    //そのステータスが許可されていない場合、
-    if (permission == LocationPermission.denied) {
-      //ユーザに位置情報の使用許可を求める
-      await Geolocator.requestPermission();
-    }
-  }
-
-  Future<void> _moveToCurrentLocation() async {
-    // 現在位置の取得許可状況を確認する
-    LocationPermission permission = await Geolocator.checkPermission();
-    //位置情報の許可されている場合（常に許可されている・許可されている場合）
-    if (permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse) {
-      // 精度を高く現在地の緯度と経度を取得して変数Positionに格納する
-      final Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-      
-      setState(() {
-        markers.add(
-          Marker(
-            markerId: const MarkerId("current_location"),
-            position: LatLng(
-              position.latitude,
-              position.longitude,
-            ),
-          ),
-        );
-      });
-
-      // 現在地にカメラを移動
-      await mapController.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(position.latitude, position.longitude),
-            zoom: 16.0,
-          ),
-        ),
-      );
-    }
-  }
+  
 
   
 }
